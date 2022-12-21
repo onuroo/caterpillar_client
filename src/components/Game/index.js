@@ -1,10 +1,21 @@
-import { useContext, useEffect, useRef } from "react";
+import React, { useContext, useEffect, useRef } from "react";
 import { useToast, Button } from "@chakra-ui/react";
 import { useHistory } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
+import { useDisclosure, Box } from '@chakra-ui/react'
 import { SocketContext } from "../../socketContext";
 import { UsersContext } from "../../usersContext";
 import { useState } from "react/cjs/react.development";
+
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+} from '@chakra-ui/react'
 
 console.log('process.env.REACT_APP_PUBLIC_URL', process.env)
 var CATERPILLER_HEAD_TILE = require('../../assets/caterpiller_head.png').default;
@@ -20,9 +31,11 @@ const createBoard = (context, board = {}) => {
     users,
     wall,
     started,
+    loser,
+    winner
   } = board;
 
-  if (!started) return null;
+  if (!started && !loser && !winner) return null;
   
   console.log('context', context)
   context.beginPath();
@@ -44,7 +57,6 @@ const createBoard = (context, board = {}) => {
   caterpiller_body_image.src = CATERPILLER_BODY_TILE;
   var leaf_image = new Image();
   leaf_image.src = LEAF_TILE;
-  console.log('caterpiller_head_image', caterpiller_head_image)
 
   // for (let i = 0; i < numCells + 1; i++) {
   //   ctx.moveTo(i*cellSize, 0);
@@ -89,12 +101,18 @@ const Game = () => {
   const history = useHistory();
   const toast = useToast();
   let { room_name } = useParams();
+
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const finalRef = React.useRef(null);
+
   
   const [players, setPlayers] = useState([]);
   
   
   const {user} = useContext(UsersContext);
   const user_name = user;
+
+  const [win_or_lose, set_win_or_lose] = useState(null);
   
 
   console.log('room_name', room_name)
@@ -109,15 +127,16 @@ const Game = () => {
     
     socket.on('gameUpdate', game => {
       console.log('board', game?.board)
+      checkGameOver(game?.board);
       context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       console.log('context.canvas.width', context.canvas.width)
       createBoard(context, game.board);
     });
 
-    socket.on('getUsers', users => {
-      setPlayers(users);
-      console.log('usersusersusers', users);
+    socket.on('getUsers', val => {
+      setPlayers(val?.users);
+      console.log('usersusersusers', val?.users);
     })
 
     socket.emit('getUsers', { room_name }, error => {
@@ -176,19 +195,39 @@ const Game = () => {
             duration: 5000,
             isClosable: true,
         })
-    })
-}, [socket, toast])
+    });
+  }, [socket, toast])
+
+
+const checkGameOver = (board) => {
+  if (board.loser || board.winner) {
+    if (board.loser && board.loser.name === user_name) {
+      // You Lost
+      set_win_or_lose('lost')
+      onOpen();
+    } else if (board.winner && board.winner === user_name) {
+      // You Won
+      set_win_or_lose('win')
+      onOpen();
+    } else if (!board.winner) {
+      // You Won
+      set_win_or_lose('win')
+      onOpen();
+    }
+  }
+}
 
 
   const onStartGame = () => {
     socket.emit('startGame', { user_name, room_name });
   };
+  console.log('players', players)
 
   return (
     <div>
       <canvas width={CANVAS_WIDTH} height={CANVAS_HEIGHT} style={{borderWidth: 1, borderColor: '#5d4037', backgroundColor: '#5d4037'}} ref={canvasRef} />
       <h2><strong>Players</strong></h2>
-      {players.map((player) => {
+      {players?.map((player) => {
         return (
           <div>
             <p>
@@ -197,12 +236,36 @@ const Game = () => {
           </div>
         )
       })}
-      {/* {console.log('22222 user_name', user_name)}
-      {console.log('22222', players.find(player => player.name === user_name))} */}
-      {console.log('players', players)}
-      {players.find(player => player.name === user_name)?.creator && (
+      {players?.find(player => player.name === user_name)?.creator && (
         <Button onClick={onStartGame} colorScheme='blue'>Start the game</Button>
       )}
+
+
+        {/* <Box ref={finalRef} tabIndex={-1} aria-label='Focus moved to this box'>
+          Some other content that'll receive focus on close.
+        </Box>
+           */}
+         <Modal finalFocusRef={finalRef} isOpen={isOpen} onClose={onClose}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>{win_or_lose === 'win' ? 'You Won' : 'You Lost'}</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              {/* <Lorem count={2} /> */}
+            </ModalBody>
+              <ModalHeader>
+                {win_or_lose === 'win' ? 'Congratulations' : 'We hope next time will be better'}
+              </ModalHeader>
+            <ModalFooter>
+              {/* <Button colorScheme='blue' mr={3} onClick={onClose}>
+                
+              </Button> */}
+              <Button onClick={onClose} variant='ghost'>Ok</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      
+
     </div>
   )
 };
